@@ -5,6 +5,8 @@ const items = [
     { label: "Ghép trận", href: "/game" },
     { label: "Phòng chơi", href: "/rooms" },
     { label: "Chơi với máy", href: "/computer" },
+    { label: "Lịch sử", href: "/history" },
+    { label: "Tài khoản", href: "/account" },
 ];
 
 export const SiteNav = () => <header className="relative z-50 px-4 pt-6 flex justify-center">

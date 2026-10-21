@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
+const WS_URL = import.meta.env.VITE_WS_URL || `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`;
 const MAX_RETRY_DELAY_MS = 10000;
-export const useSocket = () => {
+export const useSocket = (enabled = true) => {
     const [socket, setSocket] = useState<WebSocket | null>(null);
     useEffect(() => {
+        if (!enabled) return;
         let current: WebSocket | null = null;
         let retryTimer: ReturnType<typeof setTimeout> | undefined;
         let attempt = 0;
@@ -31,6 +32,6 @@ export const useSocket = () => {
             clearTimeout(retryTimer);
             current?.close();
         };
-    }, []);
-    return socket;
+    }, [enabled]);
+    return enabled ? socket : null;
 };

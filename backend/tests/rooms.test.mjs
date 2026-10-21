@@ -1,147 +1,114 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { once } from "node:events";
-import WebSocket, { WebSocketServer } from "ws";
-import { GameManager } from "../dist/GameManager.js";
+import { RoomManager } from "../dist/RoomManager.js";
 
-test("rooms: seats, viewers, validation, isolation, completion and cleanup", async () => {
-    const server = new WebSocketServer({ port: 0, host: "127.0.0.1" });
-    const manager = new GameManager();
-    server.on("connection", ws => {
-        manager.addUser(ws);
-        ws.on("close", () => manager.removeUser(ws));
-    });
-    await once(server, "listening");
-    const clients = [];
-    const connect = async () => {
-        const socket = new WebSocket(`ws://127.0.0.1:${server.address().port}`);
-        const messages = [];
-        socket.on("message", value => messages.push(JSON.parse(value)));
-        clients.push(socket);
-        await once(socket, "open");
-        return {
-            socket,
-            send: (type, payload = {}) => socket.send(JSON.stringify({ type, ...payload })),
-            next: async (type, predicate = () => true) => {
-                for (let i = 0; i < 100; i++) {
-                    const index = messages.findIndex(message => message.type === type && predicate(message.payload));
-                    if (index >= 0) return messages.splice(index, 1)[0].payload;
-                    await new Promise(resolve => setTimeout(resolve, 10));
-                }
-                throw new Error(`Missing ${type}`);
-            },
-        };
+function fixture() {
+    let now = 1000000;
+    const rooms = new Map();
+    const games = new Map();
+    let fail = false;
+    const store = {
+        load: async () => [...rooms.values()].map(room => structuredClone(room)),
+        save: async room => { if (fail) throw new Error("Simulated database failure"); rooms.set(room.code, structuredClone(room)); games.set(room.gameId, structuredClone(room)); },
+        remove: async code => { rooms.delete(code); },
     };
-    try {
-        const a = await connect();
-        const b = await connect();
-        const c = await connect();
-        a.send("room_create");
-        const room = await a.next("room_state");
-        assert.equal(room.role, "white");
-        assert.equal(room.status, "waiting");
-        assert.match(room.code, /^[A-Z2-9]{6}$/);
-        b.send("room_join", { code: `  ${room.code.toLowerCase()}  ` });
-        c.send("room_join", { code: room.code });
-        const [bs, cs] = await Promise.all([b.next("room_state"), c.next("room_state")]);
-        assert.deepEqual([bs.role, cs.role].sort(), ["black", "spectator"]);
-        const black = bs.role === "black" ? b : c;
-        const viewer = bs.role === "spectator" ? b : c;
-        const p = await a.next("room_state", state => state.viewers === 1);
-        assert.equal(p.players, 2);
-        viewer.send("room_move", { move: { from: "f2", to: "f3" } });
-        await viewer.next("room_error");
-        black.send("room_move", { move: { from: "e7", to: "e5" } });
-        await black.next("room_error");
-        a.send("room_move", { move: { from: "e2", to: "e5" } });
-        await a.next("room_error");
-        a.send("room_move", { move: { from: "f2", to: "f3" } });
-        const moved = await viewer.next("room_state", state => state.pgn.includes("f3"));
-        assert.ok(moved.fen.includes(" b "));
-        const late = await connect();
-        late.send("room_join", { code: room.code });
-        const snapshot = await late.next("room_state");
-        assert.equal(snapshot.role, "spectator");
-        assert.equal(snapshot.fen, moved.fen);
-        late.send("room_leave");
-        await late.next("room_left");
-        late.send("room_join", { code: "000000" });
-        assert.equal((await late.next("room_error")).message, "Phòng không tồn tại");
-        late.send("room_create");
-        const other = await late.next("room_state");
-        assert.notEqual(other.code, room.code);
-        for (const [who, from, to, san] of [[black, "e7", "e5", "e5"], [a, "g2", "g4", "g4"], [black, "d8", "h4", "Qh4#"]]) {
-            who.send("room_move", { move: { from, to } });
-            await viewer.next("room_state", state => state.pgn.includes(san));
-        }
-        const ended = await a.next("room_state", state => state.status === "finished");
-        assert.equal(ended.result.winner, "black");
-        assert.equal(ended.result.reason, "checkmate");
-        viewer.send("room_restart", { round: 1 });
-        await viewer.next("room_error");
-        a.send("room_restart", { round: 1 });
-        const proposed = await black.next("room_state", state => state.restartPending);
-        assert.equal(proposed.round, 1);
-        assert.equal(proposed.status, "finished");
-        black.send("room_restart", { round: 1, cancel: true });
-        await a.next("room_state", state => state.round === 1 && state.status === "finished" && !state.restartPending);
-        a.send("room_restart", { round: 1 });
-        black.send("room_restart", { round: 1 });
-        const replay = await viewer.next("room_state", state => state.round === 2);
-        assert.equal(replay.status, "playing");
-        assert.equal(replay.result, null);
-        assert.equal(replay.code, room.code);
-        assert.equal(replay.fen, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-        assert.equal((await a.next("room_state", state => state.round === 2)).role, "black");
-        a.send("room_restart", { round: 1 });
-        assert.equal((await a.next("room_state", state => state.round === 2 && !state.restartPending)).round, 2);
-        viewer.send("room_move", { move: { from: "e2", to: "e4" } });
-        await viewer.next("room_error");
-        for (const who of [a, b, c]) {
-            who.send("room_leave");
-            await who.next("room_left");
-        }
-        a.send("room_join", { code: room.code });
-        await a.next("room_error");
-        a.send("room_join", { code: other.code });
-        assert.equal((await a.next("room_state", state => state.code === other.code)).role, "black");
-        a.socket.close();
-        const disconnected = await late.next("room_state", state => state.status === "finished");
-        assert.equal(disconnected.result.winner, "white");
-        late.send("room_restart", { round: 1 });
-        const reopened = await late.next("room_state", state => state.round === 2);
-        assert.equal(reopened.status, "waiting");
-        assert.equal(reopened.players, 1);
-        b.send("init_game");
-        c.send("init_game");
-        const initialB = await b.next("init_game");
-        const initialC = await c.next("init_game");
-        assert.deepEqual([initialB.color, initialC.color].sort(), ["black", "white"]);
-        b.send("restart_game", { round: 1 });
-        assert.equal((await c.next("restart_state")).pending, true);
-        c.send("restart_game", { round: 1, cancel: true });
-        await b.next("restart_state", state => !state.pending);
-        b.send("restart_game", { round: 1 });
-        c.send("restart_game", { round: 1 });
-        const secondB = await b.next("init_game");
-        const secondC = await c.next("init_game");
-        assert.equal(secondB.round, 2);
-        assert.notEqual(secondB.color, initialB.color);
-        assert.notEqual(secondC.color, initialC.color);
-        const white = secondB.color === "white" ? b : c;
-        const dark = secondB.color === "black" ? b : c;
-        for (const [who, otherPlayer, from, to] of [[white, dark, "f2", "f3"], [dark, white, "e7", "e5"], [white, dark, "g2", "g4"], [dark, white, "d8", "h4"]]) {
-            who.send("move", { move: { from, to } });
-            await otherPlayer.next("move");
-        }
-        assert.equal((await b.next("game_over")).reason, "checkmate");
-        assert.equal((await c.next("game_over")).reason, "checkmate");
-        b.send("restart_game", { round: 2 });
-        c.send("restart_game", { round: 2 });
-        assert.equal((await b.next("init_game")).round, 3);
-        assert.equal((await c.next("init_game")).round, 3);
-    } finally {
-        for (const client of clients) client.terminate();
-        await new Promise(resolve => server.close(resolve));
-    }
+    let manager = new RoomManager(store, () => now);
+    const user = name => ({ id: name, username: name, isGuest: false });
+    const socket = () => ({ readyState: 1, messages: [], send(text) { this.messages.push(JSON.parse(text)); } });
+    const a = user("alice"), b = user("bob"), c = user("viewer");
+    const x = socket(), y = socket(), z = socket();
+    const last = (ws, type = "room_state") => ws.messages.filter(message => message.type === type).at(-1)?.payload;
+    const send = (u, ws, data) => manager.handle(u, ws, data);
+    const move = (u, ws, from, to) => { const state = last(ws); return send(u, ws, { type: "room_move", gameId: state.gameId, revision: state.revision, move: { from, to } }); };
+    return { a, b, c, x, y, z, last, send, move, games, rooms, advance: ms => { now += ms; }, failure: value => { fail = value; }, get manager() { return manager; }, restart: async () => { manager = new RoomManager(store, () => now); await manager.initialize(); }, connect: async () => { await manager.connect(a, x); await manager.connect(b, y); await manager.connect(c, z); }, start: async (minutes = 10) => { await manager.connect(a, x); await manager.connect(b, y); await manager.connect(c, z); await send(a, x, { type: "room_create", minutes }); await send(b, y, { type: "room_join", code: ` ${last(x).code.toLowerCase()} ` }); } };
+}
+
+test("room seats, spectators, permissions, duplicate moves and rematch history", async () => {
+    const f = fixture(); await f.start();
+    assert.equal(f.last(f.x).role, "white"); assert.equal(f.last(f.y).role, "black");
+    await f.send(f.c, f.z, { type: "room_join", code: "000000" });
+    assert.equal(f.last(f.z, "room_error").message, "Phòng không tồn tại");
+    await f.send(f.c, f.z, { type: "room_join", code: f.last(f.x).code });
+    assert.equal(f.last(f.z).role, "spectator");
+    await f.move(f.c, f.z, "e2", "e4"); assert.match(f.last(f.z, "room_error").message, /quyền/);
+    await f.move(f.b, f.y, "e7", "e5"); assert.match(f.last(f.y, "room_error").message, /quyền/);
+    await f.move(f.a, f.x, "e2", "e5"); assert.match(f.last(f.x, "room_error").message, /không hợp lệ/);
+    const old = f.last(f.x);
+    f.advance(5000); await f.move(f.a, f.x, "e2", "e4");
+    assert.equal(f.last(f.z).clock.white, 595000);
+    await f.send(f.a, f.x, { type: "room_move", gameId: old.gameId, revision: old.revision, move: { from: "e2", to: "e4" } });
+    assert.match(f.last(f.x).pgn, /e4/);
+    assert.equal(f.last(f.x).clock.white, 595000);
+    await f.send(f.c, f.z, { type: "room_restart", round: 1 }); assert.match(f.last(f.z, "room_error").message, /Chỉ người chơi/);
+    await f.send(f.a, f.x, { type: "room_restart", round: 1 });
+    assert.equal(f.last(f.y).restartPending, true);
+    await f.send(f.b, f.y, { type: "room_restart", round: 1, cancel: true });
+    assert.equal(f.last(f.x).restartPending, false);
+    await f.send(f.a, f.x, { type: "room_restart", round: 1 });
+    await f.send(f.b, f.y, { type: "room_restart", round: 1 });
+    assert.equal(f.last(f.x).role, "black"); assert.equal(f.last(f.z).round, 2);
+    assert.equal(f.last(f.z).clock.white, 600000);
+    assert.equal(f.games.get(old.gameId).result.reason, "restarted");
+    assert.equal(f.games.size, 2);
+    await f.send(f.a, f.x, { type: "room_restart", round: 1 });
+    assert.equal(f.last(f.x).restartPending, false);
+});
+
+test("reconnect preserves seat, moves and server clock; duplicate tabs are one player", async () => {
+    const f = fixture(); await f.start();
+    await f.move(f.a, f.x, "e2", "e4");
+    await f.manager.disconnect(f.a, f.x);
+    f.advance(30000);
+    await f.manager.connect(f.a, f.x);
+    await f.send(f.a, f.x, { type: "room_sync" });
+    assert.equal(f.last(f.x).role, "white"); assert.match(f.last(f.x).pgn, /e4/);
+    assert.equal(f.last(f.x).clock.black, 570000);
+    await f.manager.connect(f.a, f.z);
+    await f.manager.disconnect(f.a, f.x);
+    assert.equal(f.last(f.y).whiteOnline, true);
+});
+
+test("disconnect grace and timeout finish games without further moves", async () => {
+    const f = fixture(); await f.start(3);
+    await f.manager.disconnect(f.b, f.y); f.advance(120001); await f.manager.tick();
+    assert.equal(f.last(f.x).result.reason, "disconnect"); assert.equal(f.last(f.x).result.winner, "white");
+    const g = fixture(); await g.start(3); g.advance(180001); await g.manager.tick();
+    assert.equal(g.last(g.y).result.reason, "timeout"); assert.equal(g.last(g.y).clock.white, 0);
+    await g.move(g.a, g.x, "e2", "e4"); assert.equal(g.last(g.y).status, "finished");
+});
+
+test("backend restart restores saved PGN and deducts elapsed time", async () => {
+    const f = fixture(); await f.start(); await f.move(f.a, f.x, "e2", "e4");
+    const gameId = f.last(f.x).gameId;
+    f.advance(40000); await f.restart(); await f.connect();
+    await f.send(f.a, f.x, { type: "room_sync" });
+    assert.equal(f.last(f.x).gameId, gameId); assert.equal(f.last(f.x).clock.black, 560000);
+    assert.equal(f.last(f.x).role, "white"); assert.match(f.last(f.x).pgn, /e4/);
+});
+
+test("database failure does not accept an unsaved move", async () => {
+    const f = fixture(); await f.start(); const before = f.last(f.x);
+    f.failure(true); await assert.rejects(f.move(f.a, f.x, "e2", "e4"));
+    f.failure(false); await f.send(f.a, f.x, { type: "room_sync" });
+    assert.equal(f.last(f.x).pgn, before.pgn); assert.equal(f.last(f.x).revision, before.revision);
+    await f.move(f.a, f.x, "e2", "e4"); assert.match(f.last(f.y).pgn, /e4/);
+});
+
+test("quick matchmaking uses same clock and durable state; checkmate can rematch", async () => {
+    const f = fixture(); await f.connect();
+    await f.send(f.a, f.x, { type: "init_game", minutes: 5 });
+    await f.send(f.b, f.y, { type: "init_game", minutes: 5 });
+    assert.equal(f.last(f.x).gameId, f.last(f.y).gameId);
+    await f.move(f.a, f.x, "f2", "f3"); await f.move(f.b, f.y, "e7", "e5");
+    await f.move(f.a, f.x, "g2", "g4"); await f.move(f.b, f.y, "d8", "h4");
+    assert.equal(f.last(f.x).result.reason, "checkmate");
+    const id = f.last(f.x).gameId;
+    await f.send(f.a, f.x, { type: "room_restart", round: 1 }); await f.send(f.b, f.y, { type: "room_restart", round: 1 });
+    assert.notEqual(f.last(f.x).gameId, id); assert.equal(f.games.get(id).result.winner, "black");
+    await f.send(f.b, f.y, { type: "room_leave" });
+    assert.equal(f.last(f.x).result.reason, "player_left");
+    await f.send(f.a, f.x, { type: "room_restart", round: 2 });
+    assert.equal(f.last(f.x).status, "waiting");
+    await f.send(f.c, f.z, { type: "init_game", minutes: 5 });
+    assert.equal(f.last(f.z).role, "black");
 });
