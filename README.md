@@ -1,200 +1,56 @@
-<div align="center">
+# KingOfChess
 
-<img src="frontend/public/wn.svg" alt="DevChess logo" width="88" />
+Website cờ vua trực tuyến dành cho hai người chơi.
 
-# DevChess
+## Chạy trên máy
 
-**Real-time multiplayer chess in your browser. Click play, get matched, make your move.**
+Yêu cầu Node.js 20 trở lên và npm.
 
-[![Play now](https://img.shields.io/badge/demo-play%20now-10b981?style=for-the-badge)](https://devchess-f8qw.onrender.com/)
-
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
-![React](https://img.shields.io/badge/React%2019-20232A?style=flat-square&logo=react&logoColor=61DAFB)
-![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
-![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
-
-</div>
-
-<p align="center">
-  <img src="docs/demo.gif" alt="Two players in a live DevChess game, from matchmaking to checkmate" width="900" />
-</p>
-
-## About
-
-DevChess pairs you with another player in seconds and streams every move over WebSockets. There's no sign-up: open the site, press **Play now**, and you're in a game.
-
-The server acts as the referee. Every move is checked for turn order and legality with chess.js before it reaches your opponent, so a modified client can't play illegal moves or move out of turn.
-
-> **Playing solo?** Open the site in two browser windows and click **Find a match** in both. They'll be paired with each other.
-
-> **Heads up:** the backend runs on Render's free tier and sleeps when idle, so the first connection can take up to a minute. The client retries automatically.
-
-## Features
-
-**Gameplay**
-- Instant matchmaking: the first two players in the queue are paired, and the first to join plays white
-- Click-to-move with legal-move hints; the board flips when you play black
-- Full chess rules including castling, en passant and promotion (auto-queen for now)
-- Game-over detection for checkmate, stalemate, threefold repetition, insufficient material and the 50-move rule
-- Win by forfeit if your opponent disconnects
-
-**Engineering**
-- Server-authoritative game state: the client is never trusted
-- Every incoming message is validated against a Zod schema, and payloads are capped at 1 KB
-- Ping/pong heartbeat every 30 s detects dead connections and ends their games cleanly
-- Client reconnects automatically with exponential backoff (1 s up to 10 s) to ride out cold starts
-- Finished games are removed from memory immediately
-
-**Interface**
-- The landing page replays Byrne vs. Fischer, *The Game of the Century* (New York, 1956), with pieces that glide between squares
-- The board morphs between pages using the View Transitions API
-- Interactive dot-field background that reacts to the cursor
-- Respects `prefers-reduced-motion`, and the replay pauses in background tabs
-
-## Tech stack
-
-| Layer | Technology |
-| --- | --- |
-| Frontend | React 19, TypeScript, Vite 7, Tailwind CSS 3, React Router 7, GSAP |
-| Backend | Node.js 20+, `ws`, Zod |
-| Chess rules | chess.js (on both client and server) |
-| Hosting | Render |
-
-## How it works
-
-```mermaid
-sequenceDiagram
-    participant W as Player 1 (white)
-    participant S as Server
-    participant B as Player 2 (black)
-    W->>S: init_game
-    Note over S: Player 1 waits in the queue
-    B->>S: init_game
-    S-->>W: init_game (color: white)
-    S-->>B: init_game (color: black)
-    W->>S: move e2 to e4
-    Note over S: chess.js checks turn and legality
-    S-->>B: move e2 to e4
-    Note over W,B: game continues
-    S-->>W: game_over (winner, reason)
-    S-->>B: game_over (winner, reason)
+```powershell
+npm run setup
+npm run dev
 ```
 
-The client applies each move locally first so it feels instant, then sends it to the server. The server re-validates it against its own copy of the board and only then forwards it to the opponent. Invalid or out-of-turn moves are dropped.
+Mở http://localhost:5173 ở hai cửa sổ trình duyệt. Chọn Play now, sau đó Find a match ở cả hai cửa sổ. Người vào hàng đợi trước cầm quân trắng.
 
-### Message protocol
+Backend WebSocket chạy tại ws://localhost:8080.
 
-All messages are JSON over a single WebSocket connection.
+## Kiểm tra
 
-| Direction | Example |
-| --- | --- |
-| Client → Server | `{ "type": "init_game" }` |
-| Client → Server | `{ "type": "move", "move": { "from": "e7", "to": "e8", "promotion": "q" } }` |
-| Server → Client | `{ "type": "init_game", "payload": { "color": "white" } }` |
-| Server → Client | `{ "type": "move", "payload": { "from": "e2", "to": "e4" } }` |
-| Server → Client | `{ "type": "game_over", "payload": { "winner": "black", "reason": "checkmate" } }` |
-
-`promotion` is optional and is one of `q`, `r`, `b`, `n`. `reason` is one of `checkmate`, `stalemate`, `repetition`, `insufficient_material`, `fifty_moves` or `opponent_left`. `winner` is `null` for draws.
-
-## Getting started
-
-**Prerequisites:** Node.js 20 or newer and npm.
-
-```bash
-git clone https://github.com/DevdharManpuria/devchess.git
-cd devchess
-npm run setup   # installs root, backend and frontend dependencies
-npm run dev     # backend on ws://localhost:8080, frontend on http://localhost:5173
+```powershell
+npm run build
+npm run lint --prefix frontend
 ```
 
-The frontend connects to `ws://localhost:8080` by default, so you don't need a `.env` file for local development.
+## Phạm vi bản đầu tiên
 
-### Environment variables
+Ghép trận, kiểm tra nước đi tại máy chủ, đồng bộ nước đi và thông báo kết thúc ván. Trạng thái ván nằm trong bộ nhớ. Mất kết nối sẽ kết thúc ván; chưa có tài khoản, lưu lịch sử hoặc đồng hồ thi đấu.
 
-| Variable | App | Default | Description |
-| --- | --- | --- | --- |
-| `VITE_WS_URL` | frontend | `ws://localhost:8080` | Backend WebSocket URL. Must use `wss://` in production. Baked in at build time. |
-| `PORT` | backend | `8080` | Port for the HTTP and WebSocket server. Render sets this automatically. |
+## Phòng chơi
 
-See [`frontend/.env.example`](frontend/.env.example).
+Mở http://localhost:5173/rooms và chọn Tạo phòng. Người tạo cầm quân trắng. Chia sẻ mã sáu ký tự: người vào đầu tiên cầm đen, các người vào sau chỉ xem. Người xem vào giữa ván nhận đầy đủ bàn cờ và các nước đi hiện tại. Có nút sao chép mã và thoát phòng.
 
-### Scripts
+Người chơi rời hoặc mất kết nối sẽ kết thúc ván; người xem không thay thế vị trí đó. Phòng bị xóa khi không còn ai. Phòng và ván chưa được lưu qua lần khởi động lại máy chủ.
 
-| Where | Command | Description |
-| --- | --- | --- |
-| root | `npm run setup` | Install dependencies for root, backend and frontend |
-| root | `npm run dev` | Run backend and frontend together |
-| root | `npm run build` | Build both (a good check before pushing) |
-| `frontend` | `npm run lint` | Run ESLint |
+## Đấu trận mới
 
-## Deployment
+Trong phòng có mã và ghép trận nhanh, người chơi có thể yêu cầu Đấu trận mới khi đang chơi hoặc sau khi kết thúc. Đối thủ chọn đồng ý hoặc từ chối; người gửi có thể hủy. Khi cả hai đồng ý, bàn cờ và lịch sử nước đi được đặt lại, hai người đổi màu quân. Phòng có mã giữ nguyên mã và người xem. Nếu đối thủ đã rời, người còn lại có thể mở ván chờ người mới; người xem hiện có không tự động trở thành người chơi. Với ghép trận nhanh, nút này đưa người còn lại vào hàng đợi.
 
-Both halves are deployed on Render.
+## Giao diện chơi với máy
 
-**Backend (Web Service)**
-- Root directory: `backend`
-- Build command: `npm install && npm run build`
-- Start command: `npm start`
+Mở http://localhost:5173/computer để xem giao diện chọn màu quân và độ khó. Chưa tích hợp đối thủ máy; nút bắt đầu và bàn cờ được khóa, giao diện hiển thị Sắp ra mắt.
 
-**Frontend (Static Site)**
-- Root directory: `frontend`
-- Build command: `npm install && npm run build`
-- Publish directory: `dist`
-- Environment variable: `VITE_WS_URL=wss://<your-backend>.onrender.com`
-- Rewrite rule: source `/*`, destination `/index.html`, action **Rewrite**, so refreshing `/game` doesn't 404
+## Kiểm thử phòng
 
-## Project structure
-
-```
-.
-├── package.json              # root scripts: setup, dev, build
-├── backend/
-│   └── src/
-│       ├── index.ts          # HTTP + WebSocket server, heartbeat
-│       ├── GameManager.ts    # matchmaking queue, message routing, disconnects
-│       ├── Game.ts           # a single match: turn checks, validation, results
-│       └── messages.ts       # message types and Zod schemas
-└── frontend/
-    ├── public/               # chess piece SVGs
-    └── src/
-        ├── screens/          # Landing and Game pages
-        ├── components/       # ChessBoard, GamePanel, HeroBoard, DotField, PillNav
-        ├── hooks/            # useSocket (auto-reconnect), useReplay
-        └── data/             # Game of the Century move list
+```powershell
+npm run build --prefix backend
+node --test backend/tests/rooms.test.mjs
 ```
 
-## Roadmap
+Kiểm thử ghế chơi, người xem, phân quyền nước đi, đồng bộ người vào muộn, chiếu hết, rời phòng, dọn phòng và ghép trận nhanh.
 
-- [ ] Player accounts and Elo ratings
-- [ ] Promotion picker (currently auto-queens)
-- [ ] Time controls and clocks
-- [ ] Move list with PGN export
-- [ ] Resign and draw offers
-- [ ] Rejoin a game after a refresh or dropped connection
-- [ ] Persist games in a database (state is currently in memory)
-- [ ] Unit tests for `Game` and `GameManager`
+## Nguồn gốc
 
-## Contributing
+Dựa trên DevChess của Devdhar Manpuria: https://github.com/DevdharManpuria/devchess
 
-Issues and pull requests are welcome. For bigger changes, please open an issue first.
-
-1. Fork the repo and create a branch: `git checkout -b feat/your-change`
-2. Keep the server authoritative: rule and state changes belong in `backend/src/Game.ts` or `GameManager.ts`
-3. If you change the protocol, update both `backend/src/messages.ts` and the message constants in `frontend/src/screens/Game.tsx`
-4. Run `npm run lint` and `npm run build` in `frontend/` before opening a PR
-
-## Acknowledgements
-
-- [chess.js](https://github.com/jhlywa/chess.js) for move generation and validation
-- [React Bits](https://reactbits.dev) for the DotField and PillNav components
-- Donald Byrne vs. Bobby Fischer, New York 1956, for the landing-page replay
-
-## License
-
-Released under the [MIT License](LICENSE).
-
-## Author
-
-**Devdhar Manpuria** · [GitHub](https://github.com/DevdharManpuria) · [LinkedIn](https://www.linkedin.com/in/devdharmanpuria/) · [LeetCode](https://leetcode.com/u/DevGamesdtn/)
+Xem LICENSE và ATTRIBUTION.md. Đây là bản tùy chỉnh chạy cục bộ; chưa tạo repository GitHub cho KingOfChess.

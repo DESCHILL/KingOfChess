@@ -1,17 +1,16 @@
- 
-import './App.css'
+import './App.css';
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { Landing } from './screens/Landing';
 import { Game } from './screens/Game';
-
-// Created once, outside the component: the same reasoning as NAV_ITEMS
+import { Rooms } from './screens/Rooms';
+import { Computer } from './screens/Computer';
 const router = createBrowserRouter([
-  { path: "/", element: <Landing /> },
-  { path: "/game", element: <Game /> },
+    { path: "/", element: <Landing /> },
+    { path: "/game", element: <Game /> },
+    { path: "/rooms", element: <Rooms /> },
+    { path: "/computer", element: <Computer /> },
 ]);
-
 function App() {
-  return <RouterProvider router={router} />;
+    return <RouterProvider router={router}/>;
 }
-
-export default App
+export default App;

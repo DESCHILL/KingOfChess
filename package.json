@@ -1,5 +1,5 @@
 {
-  "name": "devchess",
+  "name": "kingofchess",
   "private": true,
   "scripts": {
     "setup": "npm install && npm install --prefix backend && npm install --prefix frontend",

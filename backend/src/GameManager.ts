@@ -1,35 +1,32 @@
 import type WebSocket from "ws";
 import { Game } from "./Game.js";
+import { RoomManager } from "./RoomManager.js";
 import { GAME_OVER, INIT_GAME, MOVE, SocketMessageSchema } from "./messages.js";
-
-// User, Game
-
 export class GameManager {
+    private rooms = new RoomManager();
     private games: Game[];
     private pendingUser: WebSocket | null;
-
     constructor() {
         this.games = [];
         this.pendingUser = null;
     }
-
-    addUser(socket: WebSocket){
+    addUser(socket: WebSocket) {
         this.addHandler(socket);
     }
-
-    removeUser(socket: WebSocket){
-        // If they were waiting for a match, take them out of the queue
+    removeUser(socket: WebSocket) {
+        this.rooms.leave(socket);
         if (this.pendingUser === socket) {
             this.pendingUser = null;
             return;
         }
-
-        // If they were in a game, the opponent wins and the game is removed
         const game = this.findGame(socket);
-        if (!game) return;
+        if (!game)
+            return;
         const leaverIsWhite = game.player1 === socket;
         const opponent = leaverIsWhite ? game.player2 : game.player1;
-        opponent.send(JSON.stringify({
+        if (game.board.isGameOver()) {
+            opponent.send(JSON.stringify({ type: "opponent_departed" }));
+        } else opponent.send(JSON.stringify({
             type: GAME_OVER,
             payload: {
                 winner: leaverIsWhite ? "black" : "white",
@@ -38,53 +35,50 @@ export class GameManager {
         }));
         this.games = this.games.filter(g => g !== game);
     }
-
     private findGame(socket: WebSocket) {
         return this.games.find(g => g.player1 === socket || g.player2 === socket);
     }
-
-    private addHandler(socket: WebSocket){
+    private addHandler(socket: WebSocket) {
         socket.on("message", (data) => {
             let parsedData: unknown;
             try {
                 parsedData = JSON.parse(data.toString());
-            } catch {
+            }
+            catch {
                 console.log("Ignoring message that isn't valid JSON");
                 return;
             }
-
+            if (this.rooms.handle(socket, parsedData, this.pendingUser === socket || Boolean(this.findGame(socket)))) return;
+            if (this.rooms.has(socket)) return;
             const result = SocketMessageSchema.safeParse(parsedData);
             if (!result.success) {
                 console.log("Invalid payload received:", result.error);
-                return; 
+                return;
             }
-
             const message = result.data;
-
-            if(message.type === INIT_GAME){
-                if (this.pendingUser === socket) return;
-                if (this.findGame(socket)) return;
-
-                if(this.pendingUser){
-                    const game = new Game (this.pendingUser, socket);
+            if (message.type === "restart_game") {
+                this.findGame(socket)?.requestRestart(socket, message.round, message.cancel);
+            }
+            if (message.type === INIT_GAME) {
+                if (this.pendingUser === socket)
+                    return;
+                if (this.findGame(socket))
+                    return;
+                if (this.pendingUser) {
+                    const game = new Game(this.pendingUser, socket);
                     this.games.push(game);
                     this.pendingUser = null;
                 }
-                else{
+                else {
                     this.pendingUser = socket;
                 }
             }
-
-            if(message.type === MOVE && message.move){
+            if (message.type === MOVE && message.move) {
                 const game = this.findGame(socket);
-                if(game){
+                if (game) {
                     game.makeMove(socket, message.move);
-                    // Free the game's memory as soon as it ends
-                    if (game.board.isGameOver()) {
-                        this.games = this.games.filter(g => g !== game);
-                    }
                 }
             }
-        })
+        });
     }
 }

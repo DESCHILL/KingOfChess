@@ -1,9 +1,9 @@
 {
-  "name": "backend",
+  "name": "kingofchess-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "WebSocket game server for DevChess: matchmaking and server-side move validation",
+  "description": "WebSocket game server for KingOfChess: matchmaking and server-side move validation",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
