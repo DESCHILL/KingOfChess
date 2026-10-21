@@ -2,7 +2,13 @@
   "name": "kingofchess",
   "private": true,
   "scripts": {
-    "setup": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "setup": "node scripts/setup.mjs",
+    "start": "node backend/dist/index.js",
+    "doctor": "node scripts/doctor.mjs",
+    "evidence": "node scripts/evidence.mjs",
+    "test": "node --test backend/tests/rooms.test.mjs backend/tests/deployment.test.mjs",
+    "test:integration": "node --test backend/tests/integration.test.mjs",
+    "lint": "npm run lint --prefix frontend",
     "dev": "concurrently -n server,web -c blue,green \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "build": "npm run build --prefix backend && npm run build --prefix frontend"
   },

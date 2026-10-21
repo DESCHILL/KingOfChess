@@ -4,3 +4,11 @@ dist/
 repomix*
 *.tsbuildinfo
 NOTES.md
+.env.*
+!.env.example
+logs/
+evidence/
+backups/
+*.bak
+*.pem
+*.key
