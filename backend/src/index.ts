@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { WebSocketServer } from "ws";
 import { initializeDatabase, query } from "./database.js";
-import { authenticate, register, login, createSession, logout, type User } from "./auth.js";
+import { authenticate, register, login, createSession, logout, sessionScope, type User } from "./auth.js";
 import { gameManager } from "./GameManager.js";
 import { config } from "./config.js";
 import { serveFrontend } from "./static.js";
@@ -23,6 +23,7 @@ await initializeDatabase();
 await gameManager.initialize();
 const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
 const users = new WeakMap<object, User>();
+const scopes = new WeakMap<object, string>();
 const server = createServer((req, res) => {
     void (async () => {
         res.setHeader("X-Content-Type-Options", "nosniff");
@@ -48,7 +49,7 @@ const server = createServer((req, res) => {
             if (password.length > 128) { respond(res, 400, { error: "Mật khẩu quá dài" }); return; }
             try {
                 const account = path.endsWith("login") ? await login(username, password) : await register(username, password, path.endsWith("guest"));
-                await createSession(account, res);
+                await createSession(account, res, sessionScope(req));
                 respond(res, 200, { user: account });
             } catch (error) {
                 const message = error instanceof Error ? error.message : "";
@@ -60,7 +61,7 @@ const server = createServer((req, res) => {
         if (!user) { respond(res, 401, { error: "Vui lòng đăng nhập hoặc chọn chơi khách" }); return; }
         if (path === "/api/auth/logout" && req.method === "POST") {
             await logout(req, res);
-            for (const ws of wss.clients) if (users.get(ws)?.id === user.id) ws.close(4001, "Signed out");
+            for (const ws of wss.clients) if (users.get(ws)?.id === user.id && scopes.get(ws) === sessionScope(req)) ws.close(4001, "Signed out");
             respond(res, 200, { ok: true }); return;
         }
         if (path === "/api/games" && req.method === "GET") {
@@ -83,6 +84,7 @@ server.on("upgrade", (req, socket, head) => {
         if (!user) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); socket.destroy(); return; }
         wss.handleUpgrade(req, socket, head, ws => {
             users.set(ws, user);
+            scopes.set(ws, sessionScope(req));
             let alive = true;
             let count = 0;
             let windowAt = Date.now();

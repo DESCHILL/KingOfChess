@@ -9,7 +9,17 @@ export type User = { id: string; username: string; isGuest: boolean };
 type UserRow = { Id: string; Username: string; PasswordHash: string | null; IsGuest: boolean };
 const publicUser = (row: UserRow): User => ({ id: row.Id.toLowerCase(), username: row.Username, isGuest: Boolean(row.IsGuest) });
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
-const tokenOf = (req: IncomingMessage) => req.headers.cookie?.split(";").map(value => value.trim()).find(value => value.startsWith("kc_session="))?.slice(11) || "";
+export function sessionScope(req: IncomingMessage) {
+    const scope = req.headers["x-tab-id"] ?? req.headers["sec-websocket-protocol"]?.split(",").map(value => value.trim()).find(value => value.startsWith("tab."))?.slice(4);
+    if (scope === undefined) return "";
+    if (typeof scope !== "string" || !/^[a-f0-9]{32}$/.test(scope)) throw new Error("Invalid tab session");
+    return scope;
+}
+const cookieName = (scope: string) => scope ? `kc_session_${scope}` : "kc_session";
+const tokenOf = (req: IncomingMessage) => {
+    const prefix = `${cookieName(sessionScope(req))}=`;
+    return req.headers.cookie?.split(";").map(value => value.trim()).find(value => value.startsWith(prefix))?.slice(prefix.length) || "";
+};
 
 export async function authenticate(req: IncomingMessage) {
     const token = tokenOf(req);
@@ -42,13 +52,13 @@ export async function register(username: string, password: string, guest = false
     return { id, username: name, isGuest: guest };
 }
 
-export async function createSession(user: User, res: ServerResponse) {
+export async function createSession(user: User, res: ServerResponse, scope = "") {
     const token = randomBytes(32).toString("hex");
     await query("INSERT dbo.Sessions(TokenHash,UserId,ExpiresAt) VALUES(?,?,DATEADD(day,7,SYSUTCDATETIME()))", [digest(token), user.id]);
-    res.setHeader("Set-Cookie", `kc_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800${config.secureCookies ? "; Secure" : ""}`);
+    res.setHeader("Set-Cookie", `${cookieName(scope)}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800${config.secureCookies ? "; Secure" : ""}`);
 }
 
 export async function logout(req: IncomingMessage, res: ServerResponse) {
     await query("DELETE dbo.Sessions WHERE TokenHash=?", [digest(tokenOf(req))]);
-    res.setHeader("Set-Cookie", `kc_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${config.secureCookies ? "; Secure" : ""}`);
+    res.setHeader("Set-Cookie", `${cookieName(sessionScope(req))}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${config.secureCookies ? "; Secure" : ""}`);
 }

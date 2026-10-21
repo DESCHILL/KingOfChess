@@ -35,7 +35,8 @@ export const Account = () => {
                 <button disabled={busy} className="room-primary">{busy ? "Đang xử lý…" : mode === "login" ? "Đăng nhập" : "Tạo tài khoản"}</button>
             </form>
             <button disabled={busy} className="room-secondary mt-4" onClick={() => void submit("guest")}>Chơi thử với tài khoản khách</button>
-            <p className="text-sm text-slate-400 mt-5">Demo hai người trên một máy: dùng Chrome và Edge, hoặc thêm cửa sổ ẩn danh, rồi đăng nhập hai tài khoản khác nhau.</p>
+            <p className="text-sm text-slate-400 mt-5">Mỗi tab đăng nhập độc lập. Mở tab mới và đăng nhập tài khoản khác để demo hai người.</p>
         </section>}
+        <a href="/account" target="_blank" rel="noopener noreferrer" className="block mt-5 text-emerald-400">Mở tab demo người chơi thứ hai →</a>
     </main></div>;
 };

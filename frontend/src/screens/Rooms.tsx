@@ -94,7 +94,7 @@ export const Rooms = ({ quick = false }: { quick?: boolean }) => {
                         <button disabled={locked} className="room-primary">{pending ? "Đang xử lý…" : "Vào phòng"}</button>
                     </form>
                 </section>}
-                <p className="md:col-span-full text-sm text-slate-400">{!socket || syncing ? "Đang kết nối và tìm ván cũ…" : "Đã kết nối máy chủ"}. Hai cửa sổ dùng chung tài khoản sẽ điều khiển cùng một người chơi. Để demo hai bên, dùng trình duyệt khác hoặc cửa sổ ẩn danh.</p>
+                <p className="md:col-span-full text-sm text-slate-400">{!socket || syncing ? "Đang kết nối và tìm ván cũ…" : "Đã kết nối máy chủ"}. Mỗi tab có phiên đăng nhập riêng. Dùng hai tài khoản khác nhau để chơi hai bên. <a href="/account" target="_blank" rel="noopener noreferrer" className="text-emerald-400">Mở tab người chơi thứ hai →</a></p>
             </div> : <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-8 items-start">
                 <section className="flex flex-col items-center gap-4">
                     <div className="grid grid-cols-2 gap-3 w-full max-w-[512px]">{(["white", "black"] as const).map(side => <div key={side} className={`rounded-xl border p-4 ${room.status === "playing" && room.turn === side[0] ? "border-emerald-400 bg-emerald-400/10" : "border-white/10 bg-white/5"}`}>

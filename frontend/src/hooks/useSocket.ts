@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { tabSession } from "./tabSession";
 const WS_URL = import.meta.env.VITE_WS_URL || `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`;
 const MAX_RETRY_DELAY_MS = 10000;
 export const useSocket = (enabled = true) => {
@@ -10,7 +11,7 @@ export const useSocket = (enabled = true) => {
         let attempt = 0;
         let stopped = false;
         const connect = () => {
-            const ws = new WebSocket(WS_URL);
+            const ws = new WebSocket(WS_URL, ["kingofchess", `tab.${tabSession}`]);
             current = ws;
             ws.onopen = () => {
                 if (stopped) { ws.close(); return; }

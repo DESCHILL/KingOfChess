@@ -35,13 +35,13 @@ Nút “Đầu hàng và thoát phòng” kết thúc ván ngay. Đóng tab ho�
 
 ## Trình bày hai người chơi trên một máy
 
-1. Mở Chrome và Edge, hoặc một cửa sổ thường và một cửa sổ ẩn danh.
+1. Mở hai tab Chrome bằng cách nhập URL ở tab mới hoặc chọn “Mở tab demo người chơi thứ hai” trong trang Tài khoản.
 2. Đăng nhập hai tài khoản khác nhau hoặc chọn chơi khách riêng ở mỗi trình duyệt.
 3. Người thứ nhất vào Phòng chơi, chọn thời lượng và tạo phòng.
 4. Người thứ hai nhập mã để tham gia. Hai bên luân phiên đi, đồng hồ và bàn cờ cập nhật đồng thời.
 5. Tải lại một cửa sổ để minh họa khôi phục ván. Kết thúc ván rồi mở Lịch sử để xem lại các nước.
 
-Hai cửa sổ thường cùng hồ sơ trình duyệt dùng chung cookie nên là cùng một người, không thể đóng vai hai đối thủ. Có thể dùng hồ sơ thứ ba để minh họa người xem.
+Mỗi tab lưu mã phân biệt phiên trong sessionStorage; cookie đăng nhập vẫn HttpOnly và được chọn theo mã tab. Tải lại trang giữ phiên, đăng xuất chỉ tác động phiên của tab đó. Đăng nhập cùng một tài khoản ở hai tab vẫn là cùng một người chơi. Có thể mở tab mới thứ ba để minh họa người xem. Không dùng Duplicate tab vì trình duyệt có thể sao chép sessionStorage; dùng liên kết mở tab demo hoặc tab mới nhập URL. Sau khi đóng tab, đăng nhập lại tài khoản để quay về ván; tài khoản khách có thể không khôi phục được nếu mất mã phiên tab.
 
 ## Cơ sở dữ liệu
 
